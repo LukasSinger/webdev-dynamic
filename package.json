@@ -22,5 +22,8 @@
     "dependencies": {
         "better-sqlite3": "^12.4.1",
         "express": "^5.1.0"
+    },
+    "scripts": {
+        "start": "node dynamic_server.mjs"
     }
 }
