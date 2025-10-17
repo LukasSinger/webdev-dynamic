@@ -12,14 +12,13 @@ const root = path.join(__dirname, "public");
 const template = path.join(__dirname, "templates");
 
 const db = new Database("monuments.sqlite3", { readonly: true, fileMustExist: true });
-db.pragma("journal_mode = WAL");
 // Usage example: db.prepare("SELECT * FROM monuments WHERE states == ?").all("Maine")
 
 let app = express();
 app.use(express.static(root));
 
 app.get("/", (req, res) => {
-    sendRender("temp.html", res, { PAGE_TITLE: "Home" });
+    sendRender("index.html", res, { PAGE_TITLE: "Home" });
 });
 
 app.listen(port, (err) => {
