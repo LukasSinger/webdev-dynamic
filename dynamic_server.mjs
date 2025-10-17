@@ -44,7 +44,7 @@ function sendRender(url, res, replaceObj) {
             // Success
             let html = data.toString();
             for (const key in replaceObj) {
-                html.replaceAll(`$$$${key}$$$`, replaceObj[key]);
+                html = html.replaceAll(`$$$${key}$$$`, replaceObj[key]);
             }
             res.setHeader("Status", 200);
             res.setHeader("Content-Type", "text/html");
