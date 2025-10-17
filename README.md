@@ -1,2 +1,5 @@
 # Web Dev - Dynamic Server
-Dynamic Server Starter Code for Web Development Course
+
+A website for viewing information about monuments created under the Antiquities Act.
+
+Hosted at [https://webdev-dynamic-svop.onrender.com/](https://webdev-dynamic-svop.onrender.com/)
