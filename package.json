@@ -1,16 +1,26 @@
 {
-    "name": "dynamic_server",
-    "description": "Dynamic Server",
+    "name": "antiquities_act_browser",
+    "description": "Antiquities Act Browser",
     "version": "1.0.0",
     "author": {
-        "name": "",
-        "email": ""
+        "name": "Lukas Singer",
+        "email": "lukas.singer@stthomas.edu"
     },
     "contributors": [
+        {
+            "name": "Lukas Singer",
+            "email": "lukas.singer@stthomas.edu"
+        },
+        {
+            "name": "Hadi Shaar",
+            "email": "shaa6718@stthomas.edu"
+        }
     ],
-    "repository": {},
+    "repository": {
+        "url": "https://github.com/LukasSinger/webdev-dynamic/"
+    },
     "dependencies": {
-        "express": "^5.1.0",
-        "sqlite3": "^5.1.7"
+        "better-sqlite3": "^12.4.1",
+        "express": "^5.1.0"
     }
 }
