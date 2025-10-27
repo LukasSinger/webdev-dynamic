@@ -10,6 +10,7 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const port = 8080;
 const root = path.join(__dirname, "public");
 const template = path.join(__dirname, "templates");
+const nav = fs.readFileSync("templates/nav.html", "utf-8");
 
 const db = new Database("monuments.sqlite3", { readonly: true, fileMustExist: true });
 // Usage example: db.prepare("SELECT * FROM monuments WHERE states == ?").all("Maine")
@@ -79,6 +80,7 @@ function sendRender(url, res, replaceObj) {
         } else {
             // Success
             let html = data.toString();
+            replaceObj.NAV = nav;
             for (const key in replaceObj) {
                 html = html.replaceAll(`$$$${key}$$$`, replaceObj[key]);
             }

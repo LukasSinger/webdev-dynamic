@@ -5,3 +5,5 @@ A website for viewing information about monuments created under the Antiquities 
 Hosted at [https://antiquities-act.onrender.com/](https://antiquities-act.onrender.com/)
 
 Dataset source: [https://github.com/fivethirtyeight/data/tree/master/antiquities-act](https://github.com/fivethirtyeight/data/tree/master/antiquities-act)
+
+Uses coolicons by Kryston Schwarze under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
