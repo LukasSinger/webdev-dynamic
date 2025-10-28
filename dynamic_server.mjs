@@ -31,9 +31,29 @@ app.get("/president", (req, res) => {
 
 app.get("/president/:pres_id", (req, res) => {
     const PRES_ID = req.params.pres_id;
+    if (!PRES_ID) {
+        // TODO: 404 when invalid president is selected instead of redirecting
+        res.redirect("/president");
+        return;
+    }
     /** @type object[] */
     const data = db.prepare("SELECT * FROM monuments WHERE pres_or_congress == ?").all(PRES_ID);
     data.sort(sortNewToOld);
+    // Get image from Library of Congress
+    let IMG = "";
+    if (!PRES_ID.includes("Congress")) {
+        /** @type object[] */
+        const fullData = db.prepare("SELECT * FROM monuments").all();
+        const presidents = {};
+        const img_pres = (PRES_ID.split(" ").at(-1) || "").toLowerCase();
+        fullData.forEach((el) => {
+            if (el.pres_or_congress.includes("Congress")) return;
+            if (presidents[el.pres_or_congress]) return;
+            presidents[el.pres_or_congress] = el.pres_or_congress.split(" ").at(-1).toLowerCase();
+        });
+        const img_index = 26 + Object.keys(presidents).length - Object.keys(presidents).indexOf(img_pres); // Roosevelt was first to use the act as 26th president
+        IMG = `https://www.loc.gov/static/portals/free-to-use/public-domain/presidential-portraits/${img_index}-${img_pres}.jpg`;
+    }
     // Add table header
     let content = "<table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
     // Add table rows
@@ -47,7 +67,7 @@ app.get("/president/:pres_id", (req, res) => {
         content += `<td>${row.acres_affected}</td></tr>`;
     }
     content += "</table>";
-    sendRender("president.html", res, { PAGE_TITLE: PRES_ID, CONTENT: content });
+    sendRender("president.html", res, { PAGE_TITLE: PRES_ID, IMG: IMG, CONTENT: content });
 });
 
 app.listen(port, (err) => {
