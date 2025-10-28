@@ -82,6 +82,7 @@ function sendRender(url, res, replaceObj) {
             // Success
             let html = data.toString();
             replaceObj.NAV = nav;
+            replaceObj.FOUNDATION = `<script src="/js/vendor/jquery.js"></script><script src="/js/vendor/what-input.js"></script><script src="/js/vendor/foundation.js"></script><script type="application/javascript">$(document).foundation();</script>`;
             for (const key in replaceObj) {
                 html = html.replaceAll(`$$$${key}$$$`, replaceObj[key]);
             }
