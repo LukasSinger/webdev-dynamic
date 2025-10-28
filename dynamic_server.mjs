@@ -25,28 +25,19 @@ app.get("/", (req, res) => {
 app.get("/president", (req, res) => {
     /** @type object[] */
     const data = db.prepare("SELECT * FROM monuments").all();
-    // Sort data in reverse chronological order (newest to oldest)
-    data.sort((a, b) => {
-        // Put incomplete entries at the end
-        if (!a.pres_or_congress && !b.pres_or_congress) return 0;
-        else if (!a.pres_or_congress) return 1;
-        else if (!b.pres_or_congress) return -1;
-        const aParts = a.date.split("/");
-        const bParts = b.date.split("/");
-        const aDate = new Date(a.year, aParts[0] - 1, aParts[1]); // convert from m/dd format
-        const bDate = new Date(b.year, bParts[0] - 1, bParts[1]);
-        return bDate.getTime() - aDate.getTime();
-    });
-    let content = "";
-    let currentPres = "";
+    data.sort(sortNewToOld);
+    res.redirect("/president/" + data[0].pres_or_congress);
+});
+
+app.get("/president/:pres_id", (req, res) => {
+    const PRES_ID = req.params.pres_id;
+    /** @type object[] */
+    const data = db.prepare("SELECT * FROM monuments WHERE pres_or_congress == ?").all(PRES_ID);
+    data.sort(sortNewToOld);
+    // Add table header
+    let content = "<table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
+    // Add table rows
     for (const row of data) {
-        // Add new table when acting president/Congress changes
-        if (row.pres_or_congress !== currentPres) {
-            if (currentPres !== "") content += "</table>";
-            currentPres = row.pres_or_congress;
-            content += `<h2>${currentPres || "No president or Congress listed"}</h2><table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>`;
-        }
-        // Add table row
         content += `<tr><td>${row.current_name}</td>`;
         content += `<td>${row.original_name}</td>`;
         content += `<td>${row.states}</td>`;
@@ -55,13 +46,23 @@ app.get("/president", (req, res) => {
         content += `<td>${row.date}</td>`;
         content += `<td>${row.acres_affected}</td></tr>`;
     }
-    sendRender("president.html", res, { CONTENT: content });
+    content += "</table>";
+    sendRender("president.html", res, { PAGE_TITLE: PRES_ID, CONTENT: content });
 });
 
 app.listen(port, (err) => {
     if (err) console.error(err);
     else console.log(`Server started on http://localhost:${port}. Waiting for requests...`);
 });
+
+/** Use this as a callback in a sort() function to sort array entries in reverse chronological order. */
+function sortNewToOld(a, b) {
+    const aParts = a.date.split("/");
+    const bParts = b.date.split("/");
+    const aDate = new Date(a.year, aParts[0] - 1, aParts[1]); // convert from m/dd format
+    const bDate = new Date(b.year, bParts[0] - 1, bParts[1]);
+    return bDate.getTime() - aDate.getTime();
+}
 
 /**
  * Renders and sends an HTML template through the provided Response.
