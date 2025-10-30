@@ -1,52 +1,64 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>$$$PAGE_TITLE$$$ | Antiquities Act Browser</title>
-    <link rel="stylesheet" href="/css/foundation.css" />
-    <link rel="stylesheet" href="/css/style.css" />
-  </head>
-  <body>
-    <div class="page-ctn grid-y">
-      $$$NAV$$$
-      <div class="main-content cell grid-x padding-x padding-y">
-        <h1 class="cell">$$$PAGE_TITLE$$$</h1>
+<html lang="en">
+<head>
+  <!--
+    templates/state.html
+    --------------------
+    Shows all monuments that include a given state name in their "states" column.
+    The server injects:
+      $$$PAGE_TITLE$$$  → e.g., "State: Utah"
+      $$$CONTENT$$$     → a <table> of rows
+      $$$PREV_LINK$$$, $$$NEXT_LINK$$$
+      $$$CHART_LABELS$$$, $$$CHART_VALUES$$$
+      $$$NAV$$$, $$$FOUNDATION$$$
+  -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>$$$PAGE_TITLE$$$ | Antiquities Act Browser</title>
+  <link rel="stylesheet" href="/css/foundation.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="page-ctn grid-y">
+    $$$NAV$$$
 
-        <div class="cell">
-          $$$CONTENT$$$
-        </div>
+    <main class="main-content cell grid-x padding-x padding-y">
+      <h1 class="cell">$$$PAGE_TITLE$$$</h1>
 
-        <div class="cell">
-          <canvas id="chart" width="800" height="320" aria-label="Acres affected chart"></canvas>
-        </div>
-
-        <nav class="cell grid-x">
-          <div class="cell small-6">
-            <a class="button" href="$$$PREV_LINK$$$">← Previous</a>
-          </div>
-          <div class="cell small-6 text-right">
-            <a class="button" href="$$$NEXT_LINK$$$">Next →</a>
-          </div>
-        </nav>
+      <div class="cell">
+        $$$CONTENT$$$
       </div>
-    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script>
-      (function () {
-        const labels = $$$CHART_LABELS$$$ || [];
-        const values = $$$CHART_VALUES$$$ || [];
-        if (!labels.length) return;
-        const ctx = document.getElementById('chart').getContext('2d');
-        new Chart(ctx, {
-          type: 'bar',
-          data: { labels, datasets: [{ label: 'Acres affected', data: values }] },
-          options: { responsive: true, maintainAspectRatio: false }
-        });
-      })();
-    </script>
+      <div class="cell">
+        <canvas id="chart" width="800" height="320" aria-label="Acres affected chart"></canvas>
+      </div>
 
-    $$$FOUNDATION$$$
-  </body>
+      <nav class="cell grid-x">
+        <div class="cell small-6">
+          <a class="button" href="$$$PREV_LINK$$$">← Previous</a>
+        </div>
+        <div class="cell small-6 text-right">
+          <a class="button" href="$$$NEXT_LINK$$$">Next →</a>
+        </div>
+      </nav>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    (function () {
+      const labels = $$$CHART_LABELS$$$ || [];
+      const values = $$$CHART_VALUES$$$ || [];
+      if (!labels.length) return;
+      const ctx = document.getElementById('chart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Acres affected', data: values }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    })();
+  </script>
+
+  $$$FOUNDATION$$$
+</body>
 </html>

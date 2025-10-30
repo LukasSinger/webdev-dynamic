@@ -1,4 +1,14 @@
+<!--
+  templates/nav.html
+  ------------------
+  This is included on every page via the $$$NAV$$$ placeholder.
+  It provides:
+   - A small-screen off-canvas menu (open/close with the button)
+   - A desktop inline nav bar
+  Make sure /public/js/jquery.js, /public/js/what-input.js, /public/js/foundation.js exist.
+-->
 <div class="off-canvas-wrapper">
+  <!-- Off-canvas nav for small screens -->
   <nav class="off-canvas position-left" id="navbar-small" data-off-canvas>
     <div class="grid-y padding-y">
       <a href="/">Home</a>
@@ -8,14 +18,21 @@
     </div>
   </nav>
 </div>
+
+<!-- Top bar shown on all screens -->
 <div class="cell navbar-ctn">
-  <div class="navbar grid-x">
+  <div class="navbar grid-x align-middle padding-x padding-y">
+    <!-- Mobile menu button (toggles the off-canvas) -->
     <div class="show-for-small-only">
-      <button type="button" class="show-nav" data-toggle="navbar-small">
+      <button type="button" class="show-nav" data-toggle="navbar-small" aria-label="Toggle navigation">
         <img src="/img/menu.svg" alt="Pages" />
       </button>
     </div>
-    <b>Antiquities Act</b>
+
+    <!-- Site title -->
+    <b class="cell auto">Antiquities Act</b>
+
+    <!-- Desktop nav links -->
     <div class="show-for-medium">
       <nav>
         <a href="/">Home</a>
