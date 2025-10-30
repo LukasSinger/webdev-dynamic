@@ -1,151 +1,372 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
-
-import { default as express } from "express";
+import express from "express";
 import Database from "better-sqlite3";
 
+// ---------------------------------------------------------------------
+// Paths & setup
+// ---------------------------------------------------------------------
+
+// ESM-safe __dirname
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
-const port = 8080;
-const root = path.join(__dirname, "public");
-const template = path.join(__dirname, "templates");
-const nav = fs.readFileSync("templates/nav.html", "utf-8");
+// Change these if your structure is different:
+const PUBLIC_DIR = path.join(__dirname, "public");
+const TEMPLATES_DIR = path.join(__dirname, "templates");
+const DB_PATH = path.join(__dirname, "monuments.sqlite3");
 
-const db = new Database("monuments.sqlite3", { readonly: true, fileMustExist: true });
-// Usage example: db.prepare("SELECT * FROM monuments WHERE states == ?").all("Maine")
+// Port: Render/Heroku uses process.env.PORT; locally we use 8080
+const port = process.env.PORT || 8080;
 
-let app = express();
-app.use(express.static(root));
+// ---------------------------------------------------------------------
+// Open the database (read-only). If file is missing, fail fast.
+// ---------------------------------------------------------------------
+let db;
+try {
+  db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
+} catch (err) {
+  console.error(`\n❌ Could not open database at ${DB_PATH}\n${err}\n`);
+  process.exit(1);
+}
 
-app.get("/", (req, res) => {
-    // Prepare cumulative chart
-    /** @type object */
-    const data = db.prepare("SELECT date, year FROM monuments WHERE year > 0").all();
-    data.sort(sortOldToNew);
-    let currentYear = data[0].year - 1;
-    let accum = 0;
-    let years = [];
-    let yearCounts = [];
-    for (const entry of data) {
-        if (years.length === 0 || years.at(-1) != entry.year) {
-            while (currentYear < entry.year) {
-                currentYear++;
-                years.push(currentYear);
-                yearCounts.push(accum);
-            }
-        }
-        accum++;
-        yearCounts[yearCounts.length - 1] = accum;
+// ---------------------------------------------------------------------
+// Create the Express app & static serving
+// ---------------------------------------------------------------------
+const app = express();
+
+// Serve static assets like /css/style.css, /js/jquery.js, /img/menu.svg
+app.use(express.static(PUBLIC_DIR));
+
+// Load the shared navigation template once (injected into every page)
+const nav = fs.readFileSync(path.join(TEMPLATES_DIR, "nav.html"), "utf-8");
+
+// Foundation snippet (injected into every page as $$$FOUNDATION$$$)
+const FOUNDATION_SNIPPET = `
+<script src="/js/jquery.js"></script>
+<script src="/js/what-input.js"></script>
+<script src="/js/foundation.js"></script>
+<script>$(function(){ $(document).foundation(); });</script>
+`;
+
+// ---------------------------------------------------------------------
+// Tiny SSR helper: read template file, replace $$$TOKENS$$$, send result
+// ---------------------------------------------------------------------
+function sendRender(fileName, res, replaceObj) {
+  const filePath = path.join(TEMPLATES_DIR, fileName);
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      // Template not found → send a friendly 404 HTML
+      res
+        .status(404)
+        .type("text/html")
+        .end(
+          `Template not found: ${fileName}<br/>Searched at: ${filePath}<br/>` +
+          `Tip: make sure your templates are in "${TEMPLATES_DIR}".`
+        );
+      return;
     }
-    let chartData = {
-        type: "line",
-        data: {
-            labels: years,
-            datasets: [
-                {
-                    label: "Monuments",
-                    data: yearCounts
-                }
-            ]
-        }
+
+    // Convert file buffer to string and inject defaults + custom values
+    let html = data.toString();
+    const withDefaults = {
+      NAV: nav,                       // top navigation block
+      FOUNDATION: FOUNDATION_SNIPPET, // jQuery + Foundation
+      PAGE_TITLE: "",                 // page heading
+      IMG: "",                        // optional image URL (presidents page)
+      CONTENT: "",                    // the main table HTML
+      PREV_LINK: "#",                 // prev item link
+      NEXT_LINK: "#",                 // next item link
+      CHART_LABELS: "[]",             // Chart.js labels JSON
+      CHART_VALUES: "[]",             // Chart.js data JSON
+      ...replaceObj,
     };
-    const chart = `new Chart(document.getElementById("data-overview"), ${JSON.stringify(chartData)});`;
-    sendRender("index.html", res, { PAGE_TITLE: "Home", CHART: chart });
-});
 
-app.get("/president", (req, res) => {
-    /** @type object[] */
-    const data = db.prepare("SELECT * FROM monuments").all();
-    data.sort(sortNewToOld);
-    res.redirect("/president/" + data[0].pres_or_congress);
-});
-
-app.get("/president/:pres_id", (req, res) => {
-    const PRES_ID = req.params.pres_id;
-    if (!PRES_ID) {
-        // TODO: 404 when invalid president is selected instead of redirecting
-        res.redirect("/president");
-        return;
+    for (const key in withDefaults) {
+      html = html.replaceAll(`$$$${key}$$$`, withDefaults[key]);
     }
-    /** @type object[] */
-    const data = db.prepare("SELECT * FROM monuments WHERE pres_or_congress == ?").all(PRES_ID);
-    data.sort(sortNewToOld);
-    // Get image from Library of Congress
-    let IMG = "";
-    if (!PRES_ID.includes("Congress")) {
-        /** @type object[] */
-        const fullData = db.prepare("SELECT * FROM monuments").all();
-        const presidents = {};
-        const img_pres = (PRES_ID.split(" ").at(-1) || "").toLowerCase();
-        fullData.forEach((el) => {
-            if (el.pres_or_congress.includes("Congress")) return;
-            if (presidents[el.pres_or_congress]) return;
-            presidents[el.pres_or_congress] = el.pres_or_congress.split(" ").at(-1).toLowerCase();
-        });
-        const img_index = 26 + Object.keys(presidents).length - Object.keys(presidents).indexOf(img_pres); // Roosevelt was first to use the act as 26th president
-        IMG = `https://www.loc.gov/static/portals/free-to-use/public-domain/presidential-portraits/${img_index}-${img_pres}.jpg`;
-    }
-    // Add table header
-    let content = "<table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
-    // Add table rows
-    for (const row of data) {
-        content += `<tr><td>${row.current_name}</td>`;
-        content += `<td>${row.original_name}</td>`;
-        content += `<td>${row.states}</td>`;
-        content += `<td>${row.current_agency}</td>`;
-        content += `<td>${row.action}</td>`;
-        content += `<td>${row.date}</td>`;
-        content += `<td>${row.acres_affected}</td></tr>`;
-    }
-    content += "</table>";
-    sendRender("president.html", res, { PAGE_TITLE: PRES_ID, IMG: IMG, CONTENT: content });
-});
 
-app.listen(port, (err) => {
-    if (err) console.error(err);
-    else console.log(`Server started on http://localhost:${port}. Waiting for requests...`);
-});
+    res.status(200).type("text/html").end(html);
+  });
+}
 
-/** Use this as a callback in a sort() function to sort array entries in reverse chronological order. */
+// ---------------------------------------------------------------------
+// Helper: sort records from newest → oldest by date/year
+// - Attempts to build a JS Date from (year, month, day).
+// - If month/day are missing, falls back to year only.
+// ---------------------------------------------------------------------
 function sortNewToOld(a, b) {
-    const aParts = a.date.split("/");
-    const bParts = b.date.split("/");
-    const aDate = new Date(a.year, aParts[0] - 1, aParts[1]); // convert from m/dd format
-    const bDate = new Date(b.year, bParts[0] - 1, bParts[1]);
-    return bDate.getTime() - aDate.getTime();
+  const parse = (r) => {
+    const [mm, dd] = String(r.date || "").split("/");
+    const y = Number(r.year) || 0;
+    const m = Number(mm) || 1;
+    const d = Number(dd) || 1;
+    return new Date(y, m - 1, d).getTime();
+  };
+  return parse(b) - parse(a);
 }
 
-function sortOldToNew(a, b) {
-    return sortNewToOld(b, a);
-}
+// ---------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------
+
+// Home: redirect to a dynamic page so users see data immediately
+app.get("/", (req, res) => res.redirect("/president"));
 
 /**
- * Renders and sends an HTML template through the provided Response.
- * @param {string} url The URL to the base HTML template.
- * @param {express.Response} res The Response to send the rendered template through.
- * @param {Object} replaceObj An object with replacement data. The keys correspond to the template strings to be replaced.
- *                            Example: { REPLACEME: "data" } would substitute $$$REPLACEME$$$ with "data".
+ * /president
+ * - Find unique list of presidents (excluding "Congress"), sort, go to first.
  */
-function sendRender(url, res, replaceObj) {
-    fs.readFile(path.join(template, url), async (err, data) => {
-        if (err) {
-            // Error (likely 404)
-            res.setHeader("Status", 404);
-            res.setHeader("Content-Type", "text/html");
-            res.end("Page not found (404)");
-        } else {
-            // Success
-            let html = data.toString();
-            replaceObj.NAV = nav;
-            replaceObj.FOUNDATION = `<script src="/js/vendor/jquery.js"></script><script src="/js/vendor/what-input.js"></script><script src="/js/vendor/foundation.js"></script><script type="application/javascript">$(document).foundation();</script>`;
-            for (const key in replaceObj) {
-                html = html.replaceAll(`$$$${key}$$$`, replaceObj[key]);
-            }
-            res.setHeader("Status", 200);
-            res.setHeader("Content-Type", "text/html");
-            res.end(html);
-        }
-        console.log(`${new Date().toISOString()}\t${res.getHeader("Status")}\t${url}`);
-    });
-}
+app.get("/president", (req, res) => {
+  const all = db.prepare("SELECT * FROM monuments").all();
+
+  // Unique, filtered, sorted list of presidents
+  const presidents = [...new Set(all.map(r => r.pres_or_congress))]
+    .filter(name => !String(name).includes("Congress"))
+    .sort();
+
+  if (presidents.length === 0) {
+    return res.status(404).type("text").send("No president data found");
+  }
+
+  res.redirect(`/president/${encodeURIComponent(presidents[0])}`);
+});
+
+/**
+ * /president/:pres_id
+ * - Show all rows for a president (newest → oldest)
+ * - Build Prev/Next links (wrap-around)
+ * - Provide chart data (years vs acres)
+ */
+app.get("/president/:pres_id", (req, res) => {
+  const PRES_ID = decodeURIComponent(req.params.pres_id);
+
+  // Get the rows for this president
+  const data = db
+    .prepare("SELECT * FROM monuments WHERE pres_or_congress = ?")
+    .all(PRES_ID);
+
+  if (!data.length) {
+    return res.status(404).type("text").send(`Error: no data for president "${PRES_ID}"`);
+  }
+
+  data.sort(sortNewToOld);
+
+  // Compute full list of presidents to derive prev/next (exclude Congress)
+  const all = db.prepare("SELECT * FROM monuments").all();
+  const presidents = [...new Set(all.map(r => r.pres_or_congress))]
+    .filter(name => !String(name).includes("Congress"))
+    .sort();
+
+  const idx = presidents.indexOf(PRES_ID);
+  const prev = presidents[(idx - 1 + presidents.length) % presidents.length];
+  const next = presidents[(idx + 1) % presidents.length];
+
+  // Optional portrait URL (Library of Congress free-to-use set)
+  const last = (PRES_ID.split(" ").at(-1) || "").toLowerCase();
+  const IMG = `https://www.loc.gov/static/portals/free-to-use/public-domain/presidential-portraits/99-${last}.jpg`;
+
+  // Build a simple HTML table for this page
+  let content = "<table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
+  for (const r of data) {
+    content += `<tr>
+      <td>${r.current_name}</td>
+      <td>${r.original_name}</td>
+      <td>${r.states}</td>
+      <td>${r.current_agency}</td>
+      <td>${r.action}</td>
+      <td>${r.date}</td>
+      <td>${r.acres_affected}</td>
+    </tr>`;
+  }
+  content += "</table>";
+
+  // Chart data (years vs acres)
+  const chartLabels = data.map(r => r.year);
+  const chartValues = data.map(r => Number(r.acres_affected || 0));
+
+  sendRender("president.html", res, {
+    PAGE_TITLE: PRES_ID,
+    IMG,
+    CONTENT: content,
+    PREV_LINK: `/president/${encodeURIComponent(prev)}`,
+    NEXT_LINK: `/president/${encodeURIComponent(next)}`,
+    CHART_LABELS: JSON.stringify(chartLabels),
+    CHART_VALUES: JSON.stringify(chartValues),
+  });
+});
+
+/**
+ * /states
+ * - Build a sorted list of all state names mentioned in the "states" column.
+ * - Redirect to the first one as a default.
+ *
+ * NOTE: The dataset uses full state names ("Utah", "Arizona"), not "UT"/"AZ".
+ */
+app.get("/states", (req, res) => {
+  const all = db.prepare("SELECT * FROM monuments").all();
+
+  const states = [...new Set(
+    all.flatMap(r => String(r.states || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean))
+  )].sort();
+
+  if (!states.length) {
+    return res.status(404).type("text").send("No state data found");
+  }
+
+  res.redirect(`/state/${encodeURIComponent(states[0])}`);
+});
+
+/**
+ * /state/:abbr
+ * - Show all rows for monuments whose "states" column contains the given name.
+ * - Prev/Next among the list of all states found in the dataset (wrap).
+ * - Chart data (years vs acres).
+ *
+ * Example: /state/Utah   (use full names)
+ */
+app.get("/state/:abbr", (req, res) => {
+  const abbr = decodeURIComponent(req.params.abbr);
+
+  const data = db
+    .prepare("SELECT * FROM monuments WHERE states LIKE ?")
+    .all(`%${abbr}%`);
+
+  if (!data.length) {
+    return res.status(404).type("text").send(`Error: no data for state "${abbr}"`);
+  }
+
+  data.sort(sortNewToOld);
+
+  const all = db.prepare("SELECT * FROM monuments").all();
+  const states = [...new Set(
+    all.flatMap(r => String(r.states || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean))
+  )].sort();
+
+  const idx = states.indexOf(abbr);
+  const prev = states[(idx - 1 + states.length) % states.length];
+  const next = states[(idx + 1) % states.length];
+
+  let content = "<table><tr><th>Name</th><th>Original Name</th><th>President/Congress</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
+  for (const r of data) {
+    content += `<tr>
+      <td>${r.current_name}</td>
+      <td>${r.original_name}</td>
+      <td>${r.pres_or_congress}</td>
+      <td>${r.current_agency}</td>
+      <td>${r.action}</td>
+      <td>${r.date}</td>
+      <td>${r.acres_affected}</td>
+    </tr>`;
+  }
+  content += "</table>";
+
+  const chartLabels = data.map(r => r.year);
+  const chartValues = data.map(r => Number(r.acres_affected || 0));
+
+  sendRender("state.html", res, {
+    PAGE_TITLE: `State: ${abbr}`,
+    CONTENT: content,
+    PREV_LINK: `/state/${encodeURIComponent(prev)}`,
+    NEXT_LINK: `/state/${encodeURIComponent(next)}`,
+    CHART_LABELS: JSON.stringify(chartLabels),
+    CHART_VALUES: JSON.stringify(chartValues),
+  });
+});
+
+/**
+ * /years
+ * - Find all distinct years in the dataset and redirect to the first one.
+ */
+app.get("/years", (req, res) => {
+  const years = db
+    .prepare("SELECT DISTINCT year FROM monuments ORDER BY year")
+    .all()
+    .map(r => r.year);
+
+  if (!years.length) {
+    return res.status(404).type("text").send("No year data found");
+  }
+
+  res.redirect(`/year/${years[0]}`);
+});
+
+/**
+ * /year/:year
+ * - Show all rows for a given year.
+ * - Prev/Next among the list of all years found (wrap).
+ * - Chart data: monument names vs acres.
+ */
+app.get("/year/:year", (req, res) => {
+  const year = Number(req.params.year);
+
+  const data = db
+    .prepare("SELECT * FROM monuments WHERE year = ?")
+    .all(year);
+
+  if (!data.length) {
+    return res.status(404).type("text").send(`Error: no data for year ${year}`);
+  }
+
+  data.sort(sortNewToOld);
+
+  const years = db
+    .prepare("SELECT DISTINCT year FROM monuments ORDER BY year")
+    .all()
+    .map(r => r.year);
+
+  const idx = years.indexOf(year);
+  const prev = years[(idx - 1 + years.length) % years.length];
+  const next = years[(idx + 1) % years.length];
+
+  let content = "<table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
+  for (const r of data) {
+    content += `<tr>
+      <td>${r.current_name}</td>
+      <td>${r.original_name}</td>
+      <td>${r.states}</td>
+      <td>${r.current_agency}</td>
+      <td>${r.action}</td>
+      <td>${r.date}</td>
+      <td>${r.acres_affected}</td>
+    </tr>`;
+  }
+  content += "</table>";
+
+  // Chart for the year page: monument names vs acres
+  const chartLabels = data.map(r => r.current_name);
+  const chartValues = data.map(r => Number(r.acres_affected || 0));
+
+  sendRender("year.html", res, {
+    PAGE_TITLE: `Year: ${year}`,
+    CONTENT: content,
+    PREV_LINK: `/year/${prev}`,
+    NEXT_LINK: `/year/${next}`,
+    CHART_LABELS: JSON.stringify(chartLabels),
+    CHART_VALUES: JSON.stringify(chartValues),
+  });
+});
+
+// ---------------------------------------------------------------------
+// Catch-all 404 for unknown routes (e.g., /does-not-exist)
+// ---------------------------------------------------------------------
+app.use((req, res) => {
+  res.status(404).type("text").send(`Error 404: "${req.path}" not found`);
+});
+
+// ---------------------------------------------------------------------
+// Start the server
+// ---------------------------------------------------------------------
+app.listen(port, () => {
+  console.log(`✅ Server running at http://localhost:${port}`);
+  console.log(`    Static:    ${PUBLIC_DIR}`);
+  console.log(`    Templates: ${TEMPLATES_DIR}`);
+  console.log(`    Database:  ${DB_PATH}`);
+});
