@@ -71,11 +71,20 @@ app.get("/", (req, res) => {
 });
 
 app.get("/president", (req, res) => {
-    /** @type object[] */
-    const data = db.prepare("SELECT * FROM monuments").all();
-    data.sort(sortNewToOld);
-    res.redirect("/president/" + data[0].pres_or_congress);
+  const all = db.prepare("SELECT * FROM monuments").all();
+
+  // unique + sorted, excluding "Congress"
+  const presidents = [...new Set(all.map(r => r.pres_or_congress))]
+    .filter(n => !String(n).includes("Congress"))
+    .sort();
+
+  if (!presidents.length) {
+    return res.status(404).type("text").send("No president data found");
+  }
+
+  res.redirect(`/president/${encodeURIComponent(presidents[0])}`);
 });
+
 
 app.get("/president/:pres_id", (req, res) => {
   const PRES_ID = decodeURIComponent(req.params.pres_id);
@@ -238,6 +247,13 @@ app.get("/year/:year", (req, res) => {
     CHART_VALUES: JSON.stringify(chartValues),
   });
 });
+
+// Aliases to be forgiving with links like "/year" or trailing slashes
+app.get("/year", (req, res) => res.redirect("/years"));
+app.get("/year/", (req, res) => res.redirect("/years"));
+app.get("/state", (req, res) => res.redirect("/states"));
+app.get("/state/", (req, res) => res.redirect("/states"));
+app.get("/president/", (req, res) => res.redirect("/president"));
 
 
 app.use((req, res) => res.status(404).type("text").send(`Error 404: "${req.path}" not found`));
