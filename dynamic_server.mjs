@@ -10,7 +10,7 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const port = 8080;
 const root = path.join(__dirname, "public");
 const template = path.join(__dirname, "templates");
-const nav = fs.readFileSync("templates/nav.html", "utf-8");
+const nav = fs.readFileSync(path.join(template, "nav.html"), "utf-8");
 // Injected into every page as $$$FOUNDATION$$$
 const FOUNDATION_SNIPPET = `
 <script src="/js/jquery.js"></script>
