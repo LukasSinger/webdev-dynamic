@@ -1,19 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!--
-    templates/year.html
-    -------------------
-    Shows all monuments for a given year.
-    The server injects:
-      $$$PAGE_TITLE$$$  → e.g., "Year: 1906"
-      $$$CONTENT$$$     → a <table> of rows
-      $$$PREV_LINK$$$, $$$NEXT_LINK$$$
-      $$$CHART_LABELS$$$, $$$CHART_VALUES$$$
-      $$$NAV$$$, $$$FOUNDATION$$$
-  -->
+  <!-- templates/year.html -->
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>$$$PAGE_TITLE$$$ | Antiquities Act Browser</title>
   <link rel="stylesheet" href="/css/foundation.css" />
   <link rel="stylesheet" href="/css/style.css" />
@@ -25,14 +15,17 @@
     <main class="main-content cell grid-x padding-x padding-y">
       <h1 class="cell">$$$PAGE_TITLE$$$</h1>
 
+      <!-- Table of rows injected by the server -->
       <div class="cell">
         $$$CONTENT$$$
       </div>
 
+      <!-- Chart.js canvas (labels/values injected by the server) -->
       <div class="cell">
         <canvas id="chart" width="800" height="320" aria-label="Acres affected chart"></canvas>
       </div>
 
+      <!-- Prev/Next links injected by the server -->
       <nav class="cell grid-x">
         <div class="cell small-6">
           <a class="button" href="$$$PREV_LINK$$$">← Previous</a>
@@ -44,6 +37,7 @@
     </main>
   </div>
 
+  <!-- Chart.js from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     (function () {

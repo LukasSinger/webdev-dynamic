@@ -11,9 +11,25 @@ const port = 8080;
 const root = path.join(__dirname, "public");
 const template = path.join(__dirname, "templates");
 const nav = fs.readFileSync("templates/nav.html", "utf-8");
-
+// Injected into every page as $$$FOUNDATION$$$
+const FOUNDATION_SNIPPET = `
+<script src="/js/jquery.js"></script>
+<script src="/js/what-input.js"></script>
+<script src="/js/foundation.js"></script>
+<script>$(function(){ $(document).foundation(); });</script>
+`;
 const db = new Database("monuments.sqlite3", { readonly: true, fileMustExist: true });
 // Usage example: db.prepare("SELECT * FROM monuments WHERE states == ?").all("Maine")
+
+// Sort newest → oldest using (year, month/day if present)
+function sortNewToOld(a, b) {
+  const [mmA, ddA] = String(a.date || "").split("/");
+  const [mmB, ddB] = String(b.date || "").split("/");
+  const dA = new Date(Number(a.year) || 0, (Number(mmA) || 1) - 1, Number(ddA) || 1).getTime();
+  const dB = new Date(Number(b.year) || 0, (Number(mmB) || 1) - 1, Number(ddB) || 1).getTime();
+  return dB - dA;
+}
+
 
 let app = express();
 app.use(express.static(root));
@@ -62,45 +78,181 @@ app.get("/president", (req, res) => {
 });
 
 app.get("/president/:pres_id", (req, res) => {
-    const PRES_ID = req.params.pres_id;
-    if (!PRES_ID) {
-        // TODO: 404 when invalid president is selected instead of redirecting
-        res.redirect("/president");
-        return;
-    }
-    /** @type object[] */
-    const data = db.prepare("SELECT * FROM monuments WHERE pres_or_congress == ?").all(PRES_ID);
-    data.sort(sortNewToOld);
-    // Get image from Library of Congress
-    let IMG = "";
-    if (!PRES_ID.includes("Congress")) {
-        /** @type object[] */
-        const fullData = db.prepare("SELECT * FROM monuments").all();
-        const presidents = {};
-        const img_pres = (PRES_ID.split(" ").at(-1) || "").toLowerCase();
-        fullData.forEach((el) => {
-            if (el.pres_or_congress.includes("Congress")) return;
-            if (presidents[el.pres_or_congress]) return;
-            presidents[el.pres_or_congress] = el.pres_or_congress.split(" ").at(-1).toLowerCase();
-        });
-        const img_index = 26 + Object.keys(presidents).length - Object.keys(presidents).indexOf(img_pres); // Roosevelt was first to use the act as 26th president
-        IMG = `https://www.loc.gov/static/portals/free-to-use/public-domain/presidential-portraits/${img_index}-${img_pres}.jpg`;
-    }
-    // Add table header
-    let content = "<table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
-    // Add table rows
-    for (const row of data) {
-        content += `<tr><td>${row.current_name}</td>`;
-        content += `<td>${row.original_name}</td>`;
-        content += `<td>${row.states}</td>`;
-        content += `<td>${row.current_agency}</td>`;
-        content += `<td>${row.action}</td>`;
-        content += `<td>${row.date}</td>`;
-        content += `<td>${row.acres_affected}</td></tr>`;
-    }
-    content += "</table>";
-    sendRender("president.html", res, { PAGE_TITLE: PRES_ID, IMG: IMG, CONTENT: content });
+  const PRES_ID = decodeURIComponent(req.params.pres_id);
+
+  // All rows for this president
+  const data = db.prepare("SELECT * FROM monuments WHERE pres_or_congress = ?").all(PRES_ID);
+  if (!data.length) return res.status(404).type("text").send(`Error: no data for president "${PRES_ID}"`);
+
+  data.sort(sortNewToOld);
+
+  // Full list of presidents (exclude "Congress") → Prev/Next
+  const all = db.prepare("SELECT * FROM monuments").all();
+  const presidents = [...new Set(all.map(r => r.pres_or_congress))]
+    .filter(n => !String(n).includes("Congress"))
+    .sort();
+
+  const idx = presidents.indexOf(PRES_ID);
+  const prev = presidents[(idx - 1 + presidents.length) % presidents.length];
+  const next = presidents[(idx + 1) % presidents.length];
+
+  // Optional portrait (template hides it if it fails to load)
+  const last = (PRES_ID.split(" ").at(-1) || "").toLowerCase();
+  const IMG = `https://www.loc.gov/static/portals/free-to-use/public-domain/presidential-portraits/99-${last}.jpg`;
+
+  // Build table HTML
+  let content = "<table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
+  for (const r of data) {
+    content += `<tr>
+      <td>${r.current_name}</td>
+      <td>${r.original_name}</td>
+      <td>${r.states}</td>
+      <td>${r.current_agency}</td>
+      <td>${r.action}</td>
+      <td>${r.date}</td>
+      <td>${r.acres_affected}</td>
+    </tr>`;
+  }
+  content += "</table>";
+
+  // Chart data (years vs acres)
+  const chartLabels = data.map(r => r.year);
+  const chartValues = data.map(r => Number(r.acres_affected || 0));
+
+  sendRender("president.html", res, {
+    PAGE_TITLE: PRES_ID,
+    IMG,
+    CONTENT: content,
+    PREV_LINK: `/president/${encodeURIComponent(prev)}`,
+    NEXT_LINK: `/president/${encodeURIComponent(next)}`,
+    CHART_LABELS: JSON.stringify(chartLabels),
+    CHART_VALUES: JSON.stringify(chartValues),
+  });
 });
+
+// /states → compute state list and redirect to the first one
+app.get("/states", (req, res) => {
+  const all = db.prepare("SELECT * FROM monuments").all();
+  const states = [...new Set(
+    all.flatMap(r => String(r.states || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean))
+  )].sort();
+
+  if (!states.length) return res.status(404).send("No state data found");
+  res.redirect(`/state/${encodeURIComponent(states[0])}`);
+});
+
+// /state/:abbr → detail page for a given state (use full names like "Utah")
+app.get("/state/:abbr", (req, res) => {
+  const abbr = decodeURIComponent(req.params.abbr);
+  const data = db.prepare("SELECT * FROM monuments WHERE states LIKE ?").all(`%${abbr}%`);
+  if (!data.length) return res.status(404).type("text").send(`Error: no data for state "${abbr}"`);
+
+  data.sort(sortNewToOld);
+
+  const all = db.prepare("SELECT * FROM monuments").all();
+  const states = [...new Set(
+    all.flatMap(r => String(r.states || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean))
+  )].sort();
+
+  const idx = states.indexOf(abbr);
+  const prev = states[(idx - 1 + states.length) % states.length];
+  const next = states[(idx + 1) % states.length];
+
+  let content = "<table><tr><th>Name</th><th>Original Name</th><th>President/Congress</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
+  for (const r of data) {
+    content += `<tr>
+      <td>${r.current_name}</td>
+      <td>${r.original_name}</td>
+      <td>${r.pres_or_congress}</td>
+      <td>${r.current_agency}</td>
+      <td>${r.action}</td>
+      <td>${r.date}</td>
+      <td>${r.acres_affected}</td>
+    </tr>`;
+  }
+  content += "</table>";
+
+  const chartLabels = data.map(r => r.year);
+  const chartValues = data.map(r => Number(r.acres_affected || 0));
+
+  sendRender("state.html", res, {
+    PAGE_TITLE: `State: ${abbr}`,
+    CONTENT: content,
+    PREV_LINK: `/state/${encodeURIComponent(prev)}`,
+    NEXT_LINK: `/state/${encodeURIComponent(next)}`,
+    CHART_LABELS: JSON.stringify(chartLabels),
+    CHART_VALUES: JSON.stringify(chartValues),
+  });
+});
+
+// /states → compute state list and redirect to the first one
+app.get("/states", (req, res) => {
+  const all = db.prepare("SELECT * FROM monuments").all();
+  const states = [...new Set(
+    all.flatMap(r => String(r.states || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean))
+  )].sort();
+
+  if (!states.length) return res.status(404).send("No state data found");
+  res.redirect(`/state/${encodeURIComponent(states[0])}`);
+});
+
+// /state/:abbr → detail page for a given state (use full names like "Utah")
+app.get("/state/:abbr", (req, res) => {
+  const abbr = decodeURIComponent(req.params.abbr);
+  const data = db.prepare("SELECT * FROM monuments WHERE states LIKE ?").all(`%${abbr}%`);
+  if (!data.length) return res.status(404).type("text").send(`Error: no data for state "${abbr}"`);
+
+  data.sort(sortNewToOld);
+
+  const all = db.prepare("SELECT * FROM monuments").all();
+  const states = [...new Set(
+    all.flatMap(r => String(r.states || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean))
+  )].sort();
+
+  const idx = states.indexOf(abbr);
+  const prev = states[(idx - 1 + states.length) % states.length];
+  const next = states[(idx + 1) % states.length];
+
+  let content = "<table><tr><th>Name</th><th>Original Name</th><th>President/Congress</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
+  for (const r of data) {
+    content += `<tr>
+      <td>${r.current_name}</td>
+      <td>${r.original_name}</td>
+      <td>${r.pres_or_congress}</td>
+      <td>${r.current_agency}</td>
+      <td>${r.action}</td>
+      <td>${r.date}</td>
+      <td>${r.acres_affected}</td>
+    </tr>`;
+  }
+  content += "</table>";
+
+  const chartLabels = data.map(r => r.year);
+  const chartValues = data.map(r => Number(r.acres_affected || 0));
+
+  sendRender("state.html", res, {
+    PAGE_TITLE: `State: ${abbr}`,
+    CONTENT: content,
+    PREV_LINK: `/state/${encodeURIComponent(prev)}`,
+    NEXT_LINK: `/state/${encodeURIComponent(next)}`,
+    CHART_LABELS: JSON.stringify(chartLabels),
+    CHART_VALUES: JSON.stringify(chartValues),
+  });
+});
+
+app.use((req, res) => res.status(404).type("text").send(`Error 404: "${req.path}" not found`));
 
 app.listen(port, (err) => {
     if (err) console.error(err);
@@ -127,25 +279,42 @@ function sortOldToNew(a, b) {
  * @param {Object} replaceObj An object with replacement data. The keys correspond to the template strings to be replaced.
  *                            Example: { REPLACEME: "data" } would substitute $$$REPLACEME$$$ with "data".
  */
-function sendRender(url, res, replaceObj) {
-    fs.readFile(path.join(template, url), async (err, data) => {
-        if (err) {
-            // Error (likely 404)
-            res.setHeader("Status", 404);
-            res.setHeader("Content-Type", "text/html");
-            res.end("Page not found (404)");
-        } else {
-            // Success
-            let html = data.toString();
-            replaceObj.NAV = nav;
-            replaceObj.FOUNDATION = `<script src="/js/vendor/jquery.js"></script><script src="/js/vendor/what-input.js"></script><script src="/js/vendor/foundation.js"></script><script type="application/javascript">$(document).foundation();</script>`;
-            for (const key in replaceObj) {
-                html = html.replaceAll(`$$$${key}$$$`, replaceObj[key]);
-            }
-            res.setHeader("Status", 200);
-            res.setHeader("Content-Type", "text/html");
-            res.end(html);
-        }
-        console.log(`${new Date().toISOString()}\t${res.getHeader("Status")}\t${url}`);
-    });
+// REPLACE your entire sendRender with this version
+function sendRender(url, res, replaceObj = {}) {
+  const filePath = path.join(template, url);
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      // Proper HTTP status + content type
+      res.status(404).type("text/html").end("Page not found (404)");
+      console.log(`${new Date().toISOString()}\t404\t${url}`);
+      return;
+    }
+
+    let html = data.toString();
+
+    // Defaults so templates never see "undefined".
+    // NOTE: FOUNDATION_SNIPPET should be defined once near the top (see Step 1 you added).
+    const withDefaults = {
+      NAV: nav,
+      FOUNDATION: FOUNDATION_SNIPPET,   // uses /js/jquery.js, /js/what-input.js, /js/foundation.js
+      PAGE_TITLE: "",
+      IMG: "",
+      CONTENT: "",
+      PREV_LINK: "#",
+      NEXT_LINK: "#",
+      CHART_LABELS: "[]",
+      CHART_VALUES: "[]",
+      ...replaceObj,                    // caller-supplied values override defaults
+    };
+
+    // Replace $$$TOKENS$$$ in the HTML
+    for (const key in withDefaults) {
+      html = html.replaceAll(`$$$${key}$$$`, withDefaults[key]);
+    }
+
+    // Proper success status + type
+    res.status(200).type("text/html").end(html);
+    console.log(`${new Date().toISOString()}\t200\t${url}`);
+  });
 }
