@@ -191,46 +191,32 @@ app.get("/state/:abbr", (req, res) => {
   });
 });
 
-// /states → compute state list and redirect to the first one
-app.get("/states", (req, res) => {
-  const all = db.prepare("SELECT * FROM monuments").all();
-  const states = [...new Set(
-    all.flatMap(r => String(r.states || "")
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean))
-  )].sort();
-
-  if (!states.length) return res.status(404).send("No state data found");
-  res.redirect(`/state/${encodeURIComponent(states[0])}`);
+// /years → compute year list and redirect to the first one
+app.get("/years", (req, res) => {
+  const years = db.prepare("SELECT DISTINCT year FROM monuments ORDER BY year").all().map(r => r.year);
+  if (!years.length) return res.status(404).send("No year data found");
+  res.redirect(`/year/${years[0]}`);
 });
 
-// /state/:abbr → detail page for a given state (use full names like "Utah")
-app.get("/state/:abbr", (req, res) => {
-  const abbr = decodeURIComponent(req.params.abbr);
-  const data = db.prepare("SELECT * FROM monuments WHERE states LIKE ?").all(`%${abbr}%`);
-  if (!data.length) return res.status(404).type("text").send(`Error: no data for state "${abbr}"`);
+// /year/:year → detail page for a given year
+app.get("/year/:year", (req, res) => {
+  const year = Number(req.params.year);
+  const data = db.prepare("SELECT * FROM monuments WHERE year = ?").all(year);
+  if (!data.length) return res.status(404).type("text").send(`Error: no data for year ${year}`);
 
   data.sort(sortNewToOld);
 
-  const all = db.prepare("SELECT * FROM monuments").all();
-  const states = [...new Set(
-    all.flatMap(r => String(r.states || "")
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean))
-  )].sort();
+  const years = db.prepare("SELECT DISTINCT year FROM monuments ORDER BY year").all().map(r => r.year);
+  const idx = years.indexOf(year);
+  const prev = years[(idx - 1 + years.length) % years.length];
+  const next = years[(idx + 1) % years.length];
 
-  const idx = states.indexOf(abbr);
-  const prev = states[(idx - 1 + states.length) % states.length];
-  const next = states[(idx + 1) % states.length];
-
-  let content = "<table><tr><th>Name</th><th>Original Name</th><th>President/Congress</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
+  let content = "<table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
   for (const r of data) {
     content += `<tr>
       <td>${r.current_name}</td>
       <td>${r.original_name}</td>
-      <td>${r.pres_or_congress}</td>
+      <td>${r.states}</td>
       <td>${r.current_agency}</td>
       <td>${r.action}</td>
       <td>${r.date}</td>
@@ -239,18 +225,20 @@ app.get("/state/:abbr", (req, res) => {
   }
   content += "</table>";
 
-  const chartLabels = data.map(r => r.year);
+  // Chart: names vs acres for that year
+  const chartLabels = data.map(r => r.current_name);
   const chartValues = data.map(r => Number(r.acres_affected || 0));
 
-  sendRender("state.html", res, {
-    PAGE_TITLE: `State: ${abbr}`,
+  sendRender("year.html", res, {
+    PAGE_TITLE: `Year: ${year}`,
     CONTENT: content,
-    PREV_LINK: `/state/${encodeURIComponent(prev)}`,
-    NEXT_LINK: `/state/${encodeURIComponent(next)}`,
+    PREV_LINK: `/year/${prev}`,
+    NEXT_LINK: `/year/${next}`,
     CHART_LABELS: JSON.stringify(chartLabels),
     CHART_VALUES: JSON.stringify(chartValues),
   });
 });
+
 
 app.use((req, res) => res.status(404).type("text").send(`Error 404: "${req.path}" not found`));
 
@@ -259,14 +247,6 @@ app.listen(port, (err) => {
     else console.log(`Server started on http://localhost:${port}. Waiting for requests...`);
 });
 
-/** Use this as a callback in a sort() function to sort array entries in reverse chronological order. */
-function sortNewToOld(a, b) {
-    const aParts = a.date.split("/");
-    const bParts = b.date.split("/");
-    const aDate = new Date(a.year, aParts[0] - 1, aParts[1]); // convert from m/dd format
-    const bDate = new Date(b.year, bParts[0] - 1, bParts[1]);
-    return bDate.getTime() - aDate.getTime();
-}
 
 function sortOldToNew(a, b) {
     return sortNewToOld(b, a);
