@@ -19,7 +19,39 @@ let app = express();
 app.use(express.static(root));
 
 app.get("/", (req, res) => {
-    sendRender("index.html", res, { PAGE_TITLE: "Home" });
+    // Prepare cumulative chart
+    /** @type object */
+    const data = db.prepare("SELECT date, year FROM monuments WHERE year > 0").all();
+    data.sort(sortOldToNew);
+    let currentYear = data[0].year - 1;
+    let accum = 0;
+    let years = [];
+    let yearCounts = [];
+    for (const entry of data) {
+        if (years.length === 0 || years.at(-1) != entry.year) {
+            while (currentYear < entry.year) {
+                currentYear++;
+                years.push(currentYear);
+                yearCounts.push(accum);
+            }
+        }
+        accum++;
+        yearCounts[yearCounts.length - 1] = accum;
+    }
+    let chartData = {
+        type: "line",
+        data: {
+            labels: years,
+            datasets: [
+                {
+                    label: "Monuments",
+                    data: yearCounts
+                }
+            ]
+        }
+    };
+    const chart = `new Chart(document.getElementById("data-overview"), ${JSON.stringify(chartData)});`;
+    sendRender("index.html", res, { PAGE_TITLE: "Home", CHART: chart });
 });
 
 app.get("/president", (req, res) => {
@@ -82,6 +114,10 @@ function sortNewToOld(a, b) {
     const aDate = new Date(a.year, aParts[0] - 1, aParts[1]); // convert from m/dd format
     const bDate = new Date(b.year, bParts[0] - 1, bParts[1]);
     return bDate.getTime() - aDate.getTime();
+}
+
+function sortOldToNew(a, b) {
+    return sortNewToOld(b, a);
 }
 
 /**
