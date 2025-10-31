@@ -78,10 +78,14 @@ app.get("/", (req, res) => {
 
 /* -------------------------- PRESIDENTS -------------------------- */
 app.get(["/president", "/president/"], (req, res) => {
-  const all = db.prepare("SELECT * FROM monuments").all();
-  const presidents = [...new Set(all.map(r => r.pres_or_congress))]
-    .filter(n => !String(n).includes("Congress"))
-    .sort();
+  // Pull just the column we need
+  const rows = db.prepare("SELECT pres_or_congress FROM monuments").all();
+
+  const presidents = [...new Set(
+    rows
+      .map(r => String(r.pres_or_congress ?? "").trim())
+      .filter(n => n.length > 0 && !/congress/i.test(n))
+  )].sort((a, b) => a.localeCompare(b));
 
   if (!presidents.length) {
     return res.status(404).type("text").send("No president data found");
