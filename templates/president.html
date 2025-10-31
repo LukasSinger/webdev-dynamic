@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
+    <!-- templates/president.html -->
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>$$$PAGE_TITLE$$$ | Antiquities Act Browser</title>
     <link rel="stylesheet" href="/css/foundation.css" />
     <link rel="stylesheet" href="/css/style.css" />
@@ -10,20 +11,29 @@
   <body>
     <div class="page-ctn grid-y">
       $$$NAV$$$
+
       <div class="main-content cell grid-x padding-x padding-y">
         <h1 class="cell">$$$PAGE_TITLE$$$</h1>
 
-        <!-- optional portrait; hidden if src fails -->
-        <img src="$$$IMG$$$" alt="Portrait" onerror="this.style.display='none'" class="cell" />
+        <!-- Optional portrait; hidden if it fails to load -->
+        <img
+          src="$$$IMG$$$"
+          alt="Portrait of $$$PAGE_TITLE$$$"
+          onerror="this.style.display='none'"
+          class="cell"
+        />
 
+        <!-- Table injected by server -->
         <div class="cell">
           $$$CONTENT$$$
         </div>
 
+        <!-- Chart -->
         <div class="cell">
           <canvas id="chart" width="800" height="320" aria-label="Acres affected chart"></canvas>
         </div>
 
+        <!-- Prev/Next -->
         <nav class="cell grid-x">
           <div class="cell small-6">
             <a class="button" href="$$$PREV_LINK$$$">← Previous</a>
@@ -35,8 +45,8 @@
       </div>
     </div>
 
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js (local, consistent with index.html) -->
+    <script src="/js/vendor/chart.umd.min.js"></script>
     <script>
       (function () {
         const labels = $$$CHART_LABELS$$$ || [];

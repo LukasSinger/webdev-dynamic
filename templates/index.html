@@ -1,30 +1,46 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Home | Antiquities Act Browser</title>
-        <link rel="stylesheet" href="css/foundation.css" />
-        <link rel="stylesheet" href="css/style.css" />
-    </head>
-    <body>
-        <div class="page-ctn grid-y">
-            $$$NAV$$$
-            <div class="main-content cell grid-x padding-x padding-y">
-                <h1 class="cell">Home</h1>
-                <h2 class="cell">About</h2>
-                <p class="cell">This is a browser for viewing information about monuments created under the Antiquities Act.</p>
-                <p class="cell">Use the pages in the navigation bar (or in the menu on mobile) to browse the data from different points of view.</p>
-                <canvas id="data-overview"></canvas>
-                <h2 class="cell">Dataset</h2>
-                <p class="cell">The information was adapted from this <a href="https://github.com/fivethirtyeight/data/tree/master/antiquities-act">FiveThirtyEight</a> dataset.</p>
-            </div>
-        </div>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>$$$PAGE_TITLE$$$ | Antiquities Act Browser</title>
+    <link rel="stylesheet" href="/css/foundation.css" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="page-ctn grid-y">
+      <!-- Navigation (injected from templates/nav.html) -->
+      $$$NAV$$$
 
-        $$$FOUNDATION$$$
-        <script src="/js/vendor/chart.umd.min.js"></script>
-        <script>
-            $$$CHART$$$;
-        </script>
-    </body>
+      <div class="main-content cell grid-x padding-x padding-y">
+        <h1 class="cell">Home</h1>
+        <h2 class="cell">About</h2>
+        <p class="cell">
+          This is a browser for viewing information about monuments created under the Antiquities Act.
+        </p>
+        <p class="cell">
+          Use the pages in the navigation bar (or in the menu on mobile) to browse the data from different points of view.
+        </p>
+
+        <!-- Dynamic Chart -->
+        <canvas id="data-overview"></canvas>
+
+        <h2 class="cell">Dataset</h2>
+        <p class="cell">
+          The information was adapted from this
+          <a href="https://github.com/fivethirtyeight/data/tree/master/antiquities-act">FiveThirtyEight</a>
+          dataset.
+        </p>
+      </div>
+    </div>
+
+    <!-- Foundation Scripts -->
+    $$$FOUNDATION$$$
+
+    <!-- Chart.js -->
+    <script src="/js/vendor/chart.umd.min.js"></script>
+    <script>
+      $$$CHART$$$;
+    </script>
+  </body>
 </html>
