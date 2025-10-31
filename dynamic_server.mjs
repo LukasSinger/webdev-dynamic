@@ -2,23 +2,21 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
 
-import { default as express } from "express";
+import express from "express";
 import Database from "better-sqlite3";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
-
-// Use Render's port in production
-const port = process.env.PORT || 8080;
+const port = 8080;
 
 const root = path.join(__dirname, "public");
 const template = path.join(__dirname, "templates");
-const nav = fs.readFileSync(path.join(template, "nav.html"), "utf-8");
+const nav = fs.readFileSync("templates/nav.html", "utf-8");
 
 // Injected into every page as $$$FOUNDATION$$$
 const FOUNDATION_SNIPPET = `
-<script src="/js/jquery.js"></script>
-<script src="/js/what-input.js"></script>
-<script src="/js/foundation.js"></script>
+<script src="/js/vendor/jquery.js"></script>
+<script src="/js/vendor/what-input.js"></script>
+<script src="/js/vendor/foundation.js"></script>
 <script>$(function(){ $(document).foundation(); });</script>
 `;
 
@@ -32,24 +30,29 @@ function sortNewToOld(a, b) {
   const dB = new Date(Number(b.year) || 0, (Number(mmB) || 1) - 1, Number(ddB) || 1).getTime();
   return dB - dA;
 }
-
 function sortOldToNew(a, b) {
   return sortNewToOld(b, a);
 }
 
-let app = express();
+const app = express();
 app.use(express.static(root));
 
-// ---------------- Home ----------------
+/* ----------------------------- HOME ----------------------------- */
 app.get("/", (req, res) => {
-  // Prepare cumulative chart
-  /** @type object */
   const data = db.prepare("SELECT date, year FROM monuments WHERE year > 0").all();
+  if (!data.length) {
+    return sendRender("index.html", res, {
+      PAGE_TITLE: "Home",
+      CHART: "/* no data */"
+    });
+  }
+
   data.sort(sortOldToNew);
   let currentYear = data[0].year - 1;
   let accum = 0;
-  let years = [];
-  let yearCounts = [];
+  const years = [];
+  const yearCounts = [];
+
   for (const entry of data) {
     if (years.length === 0 || years.at(-1) != entry.year) {
       while (currentYear < entry.year) {
@@ -61,7 +64,8 @@ app.get("/", (req, res) => {
     accum++;
     yearCounts[yearCounts.length - 1] = accum;
   }
-  let chartData = {
+
+  const chartData = {
     type: "line",
     data: {
       labels: years,
@@ -72,21 +76,22 @@ app.get("/", (req, res) => {
   sendRender("index.html", res, { PAGE_TITLE: "Home", CHART: chart });
 });
 
-// --------------- President ---------------
-// Accept both /president and /president/
+/* -------------------------- PRESIDENTS -------------------------- */
 app.get(["/president", "/president/"], (req, res) => {
   const all = db.prepare("SELECT * FROM monuments").all();
   const presidents = [...new Set(all.map(r => r.pres_or_congress))]
     .filter(n => !String(n).includes("Congress"))
     .sort();
-  if (!presidents.length) return res.status(404).type("text").send("No president data found");
+
+  if (!presidents.length) {
+    return res.status(404).type("text").send("No president data found");
+  }
+
   return res.redirect(`/president/${encodeURIComponent(presidents[0])}`);
 });
 
-// Accept both /president/:pres_id and /president/:pres_id/
 app.get(["/president/:pres_id", "/president/:pres_id/"], (req, res) => {
   const PRES_ID = decodeURIComponent(req.params.pres_id);
-
   const data = db.prepare("SELECT * FROM monuments WHERE pres_or_congress = ?").all(PRES_ID);
   if (!data.length) return res.status(404).type("text").send(`Error: no data for president "${PRES_ID}"`);
 
@@ -132,19 +137,20 @@ app.get(["/president/:pres_id", "/president/:pres_id/"], (req, res) => {
   });
 });
 
-// ---------------- States ----------------
-// Accept both /states and /states/
+/* ---------------------------- STATES ---------------------------- */
 app.get(["/states", "/states/"], (req, res) => {
   const all = db.prepare("SELECT * FROM monuments").all();
   const states = [...new Set(
-    all.flatMap(r => String(r.states || "").split(",").map(s => s.trim()).filter(Boolean))
+    all.flatMap(r => String(r.states || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean))
   )].sort();
 
   if (!states.length) return res.status(404).send("No state data found");
-  return res.redirect(`/state/${encodeURIComponent(states[0])}`);
+  res.redirect(`/state/${encodeURIComponent(states[0])}`);
 });
 
-// Accept both /state/:abbr and /state/:abbr/
 app.get(["/state/:abbr", "/state/:abbr/"], (req, res) => {
   const abbr = decodeURIComponent(req.params.abbr);
   const data = db.prepare("SELECT * FROM monuments WHERE states LIKE ?").all(`%${abbr}%`);
@@ -154,7 +160,10 @@ app.get(["/state/:abbr", "/state/:abbr/"], (req, res) => {
 
   const all = db.prepare("SELECT * FROM monuments").all();
   const states = [...new Set(
-    all.flatMap(r => String(r.states || "").split(",").map(s => s.trim()).filter(Boolean))
+    all.flatMap(r => String(r.states || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean))
   )].sort();
 
   const idx = states.indexOf(abbr);
@@ -188,56 +197,60 @@ app.get(["/state/:abbr", "/state/:abbr/"], (req, res) => {
   });
 });
 
-// ---------------- Years ----------------
-// Accept both /years and /years/
-// /years → compute valid year list and redirect to the first one
-
+/* ----------------------------- YEARS ---------------------------- */
 app.get(["/years", "/years/"], (req, res) => {
-  // Pull distinct years, coerce to Number, keep only finite > 0, sort ascending
-  const years = db
-    .prepare("SELECT DISTINCT year FROM monuments")
-    .all()
-    .map(r => Number(r.year))
-    .filter(y => Number.isFinite(y) && y > 0)
-    .sort((a, b) => a - b);
+  const rows = db.prepare(`
+    SELECT CAST(TRIM(year) AS INTEGER) AS y, COUNT(*) AS c
+    FROM monuments
+    WHERE TRIM(year) != '' AND CAST(TRIM(year) AS INTEGER) > 0
+    GROUP BY y
+    HAVING c > 0
+    ORDER BY y
+  `).all();
 
-  if (!years.length) {
-    return res.status(404).type("text").send("No valid year data found");
-  }
+  if (!rows.length) return res.status(404).type("text").send("No valid year data found");
 
-  // Debug (optional): see what we're redirecting to
-  // console.log("Redirecting to first valid year:", years[0]);
-
-  return res.redirect(`/year/${years[0]}`);
+  const firstYear = rows[0].y;
+  res.redirect(`/year/${firstYear}`);
 });
 
-// /year/:year → detail page for a given year
 app.get(["/year/:year", "/year/:year/"], (req, res) => {
   const yearParam = Number(req.params.year);
   if (!Number.isFinite(yearParam) || yearParam <= 0) {
     return res.status(404).type("text").send(`Error: invalid year "${req.params.year}"`);
   }
 
-  const data = db.prepare("SELECT * FROM monuments WHERE year = ?").all(yearParam);
-  if (!data.length) return res.status(404).type("text").send(`Error: no data for year ${yearParam}`);
+  const data = db.prepare(`
+    SELECT *
+    FROM monuments
+    WHERE
+      (TRIM(year) != '' AND CAST(TRIM(year) AS INTEGER) = ?)
+      OR (
+        TRIM(date) != '' AND LENGTH(TRIM(date)) >= 4
+        AND CAST(SUBSTR(TRIM(date), -4, 4) AS INTEGER) = ?
+      )
+  `).all(yearParam, yearParam);
+
+  if (!data.length) {
+    return res.status(404).type("text").send(`Error: no data for year ${yearParam}`);
+  }
 
   data.sort(sortNewToOld);
 
-  // Build the SAME filtered list used in /years
-  const years = db
-    .prepare("SELECT DISTINCT year FROM monuments")
-    .all()
-    .map(r => Number(r.year))
-    .filter(y => Number.isFinite(y) && y > 0)
-    .sort((a, b) => a - b);
+  const years = db.prepare(`
+    SELECT CAST(TRIM(year) AS INTEGER) AS y
+    FROM monuments
+    WHERE TRIM(year) != '' AND CAST(TRIM(year) AS INTEGER) > 0
+    GROUP BY y
+    ORDER BY y
+  `).all().map(r => r.y);
 
-  const idx = years.indexOf(yearParam);
-  if (idx === -1) {
-    // If a year exists in the data but wasn't in the filtered list (rare),
-    // just send a sensible 404 with context.
-    return res.status(404).type("text").send(`Error: year ${yearParam} is not in the valid years list`);
+  if (!years.includes(yearParam)) {
+    years.push(yearParam);
+    years.sort((a, b) => a - b);
   }
 
+  const idx = years.indexOf(yearParam);
   const prev = years[(idx - 1 + years.length) % years.length];
   const next = years[(idx + 1) % years.length];
 
@@ -268,36 +281,27 @@ app.get(["/year/:year", "/year/:year/"], (req, res) => {
   });
 });
 
-
-// -------------- 404 --------------
+/* ------------------------------ 404 ------------------------------ */
 app.use((req, res) => res.status(404).type("text").send(`Error 404: "${req.path}" not found`));
 
-// -------------- Start --------------
+/* ---------------------------- STARTUP ---------------------------- */
 app.listen(port, (err) => {
   if (err) console.error(err);
-  else console.log(`Server started on http://localhost:${port}. Waiting for requests...`);
+  else console.log(`Server started on http://localhost:${port}`);
 });
 
-/**
- * Renders and sends an HTML template through the provided Response.
- * @param {string} url The URL to the base HTML template.
- * @param {express.Response} res The Response to send the rendered template through.
- * @param {Object} replaceObj Key/value map of $$$TOKENS$$$ → value
- */
-
+/* ------------------------- TEMPLATE RENDER ------------------------ */
 function sendRender(url, res, replaceObj = {}) {
   const filePath = path.join(template, url);
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      
       res.status(404).type("text/html").end("Page not found (404)");
       console.log(`${new Date().toISOString()}\t404\t${url}`);
       return;
     }
 
     let html = data.toString();
-
     const withDefaults = {
       NAV: nav,
       FOUNDATION: FOUNDATION_SNIPPET,
