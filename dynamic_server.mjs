@@ -102,7 +102,7 @@ app.get(["/president/:pres_id", "/president/:pres_id/"], (req, res) => {
   data.sort(sortNewToOld);
 
   const all = db.prepare("SELECT * FROM monuments").all();
-  const presidents = [...new Set(all.sort(sortNewToOld).map(r => r.pres_or_congress))].filter(n => !String(n).includes("Congress"));
+  const presidents = [...new Set(all.sort(sortNewToOld).map(r => r.pres_or_congress))].filter(n => n && !String(n).includes("Congress"));
 
   const idx = presidents.indexOf(PRES_ID);
   const prev = presidents[(idx - 1 + presidents.length) % presidents.length];
