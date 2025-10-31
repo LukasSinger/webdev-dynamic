@@ -102,16 +102,36 @@ app.get(["/president/:pres_id", "/president/:pres_id/"], (req, res) => {
   data.sort(sortNewToOld);
 
   const all = db.prepare("SELECT * FROM monuments").all();
-  const presidents = [...new Set(all.map(r => r.pres_or_congress))]
-    .filter(n => !String(n).includes("Congress"))
-    .sort();
+  const presidents = [...new Set(all.sort(sortNewToOld).map(r => r.pres_or_congress))].filter(n => !String(n).includes("Congress"));
 
   const idx = presidents.indexOf(PRES_ID);
   const prev = presidents[(idx - 1 + presidents.length) % presidents.length];
   const next = presidents[(idx + 1) % presidents.length];
 
-  const last = (PRES_ID.split(" ").at(-1) || "").toLowerCase();
-  const IMG = `https://www.loc.gov/static/portals/free-to-use/public-domain/presidential-portraits/99-${last}.jpg`;
+  let IMG = "";
+  if (!PRES_ID.includes("Congress")) {
+      const presidents = {
+          "B. H. Obama": 44,
+          "G. W. Bush": 43,
+          "W. Clinton": 42,
+          "J. Carter": 39,
+          "G. Ford": 38,
+          "L. Johnson": 36,
+          "J. Kennedy": 35,
+          "D. Eisenhower": 34,
+          "H. Truman": 33,
+          "F. D. Roosevelt": 32,
+          "H. Hoover": 31,
+          "C. Coolidge": 30,
+          "W. Harding": 29,
+          "W. Wilson": 28,
+          "W. Taft": 27,
+          "T. Roosevelt": 26
+      };
+      const img_pres = (PRES_ID.split(" ").at(-1) || "").toLowerCase();
+      const img_index = presidents[PRES_ID];
+      IMG = `https://www.loc.gov/static/portals/free-to-use/public-domain/presidential-portraits/${img_index}-${img_pres}.jpg`;
+  }
 
   let content = "<table><tr><th>Name</th><th>Original Name</th><th>States</th><th>Agency</th><th>Action</th><th>Date</th><th>Acres</th></tr>";
   for (const r of data) {
