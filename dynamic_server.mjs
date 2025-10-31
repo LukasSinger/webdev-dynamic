@@ -190,22 +190,54 @@ app.get(["/state/:abbr", "/state/:abbr/"], (req, res) => {
 
 // ---------------- Years ----------------
 // Accept both /years and /years/
+// /years → compute valid year list and redirect to the first one
+
 app.get(["/years", "/years/"], (req, res) => {
-  const years = db.prepare("SELECT DISTINCT year FROM monuments ORDER BY year").all().map(r => r.year);
-  if (!years.length) return res.status(404).send("No year data found");
+  // Pull distinct years, coerce to Number, keep only finite > 0, sort ascending
+  const years = db
+    .prepare("SELECT DISTINCT year FROM monuments")
+    .all()
+    .map(r => Number(r.year))
+    .filter(y => Number.isFinite(y) && y > 0)
+    .sort((a, b) => a - b);
+
+  if (!years.length) {
+    return res.status(404).type("text").send("No valid year data found");
+  }
+
+  // Debug (optional): see what we're redirecting to
+  // console.log("Redirecting to first valid year:", years[0]);
+
   return res.redirect(`/year/${years[0]}`);
 });
 
-// Accept both /year/:year and /year/:year/
+// /year/:year → detail page for a given year
 app.get(["/year/:year", "/year/:year/"], (req, res) => {
-  const year = Number(req.params.year);
-  const data = db.prepare("SELECT * FROM monuments WHERE year = ?").all(year);
-  if (!data.length) return res.status(404).type("text").send(`Error: no data for year ${year}`);
+  const yearParam = Number(req.params.year);
+  if (!Number.isFinite(yearParam) || yearParam <= 0) {
+    return res.status(404).type("text").send(`Error: invalid year "${req.params.year}"`);
+  }
+
+  const data = db.prepare("SELECT * FROM monuments WHERE year = ?").all(yearParam);
+  if (!data.length) return res.status(404).type("text").send(`Error: no data for year ${yearParam}`);
 
   data.sort(sortNewToOld);
 
-  const years = db.prepare("SELECT DISTINCT year FROM monuments ORDER BY year").all().map(r => r.year);
-  const idx = years.indexOf(year);
+  // Build the SAME filtered list used in /years
+  const years = db
+    .prepare("SELECT DISTINCT year FROM monuments")
+    .all()
+    .map(r => Number(r.year))
+    .filter(y => Number.isFinite(y) && y > 0)
+    .sort((a, b) => a - b);
+
+  const idx = years.indexOf(yearParam);
+  if (idx === -1) {
+    // If a year exists in the data but wasn't in the filtered list (rare),
+    // just send a sensible 404 with context.
+    return res.status(404).type("text").send(`Error: year ${yearParam} is not in the valid years list`);
+  }
+
   const prev = years[(idx - 1 + years.length) % years.length];
   const next = years[(idx + 1) % years.length];
 
@@ -227,7 +259,7 @@ app.get(["/year/:year", "/year/:year/"], (req, res) => {
   const chartValues = data.map(r => Number(r.acres_affected || 0));
 
   sendRender("year.html", res, {
-    PAGE_TITLE: `Year: ${year}`,
+    PAGE_TITLE: `Year: ${yearParam}`,
     CONTENT: content,
     PREV_LINK: `/year/${prev}`,
     NEXT_LINK: `/year/${next}`,
@@ -235,6 +267,7 @@ app.get(["/year/:year", "/year/:year/"], (req, res) => {
     CHART_VALUES: JSON.stringify(chartValues),
   });
 });
+
 
 // -------------- 404 --------------
 app.use((req, res) => res.status(404).type("text").send(`Error 404: "${req.path}" not found`));

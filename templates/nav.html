@@ -1,6 +1,6 @@
 <!-- templates/nav.html -->
 <div class="off-canvas-wrapper">
-  <!-- Mobile off-canvas menu -->
+  <!-- Mobile off-canvas menu (for small screens) -->
   <nav class="off-canvas position-left" id="navbar-small" data-off-canvas>
     <div class="grid-y padding-y">
       <a href="/">Home</a>
@@ -11,24 +11,30 @@
   </nav>
 </div>
 
-<!-- Top nav -->
+<!-- Top navigation bar (visible on all screen sizes) -->
 <div class="cell navbar-ctn">
-  <div class="navbar grid-x align-middle padding-x padding-y">
-    <!-- Toggle button for small screens -->
+  <div class="navbar grid-x">
+    <!-- Hamburger menu button for mobile -->
     <div class="show-for-small-only">
-      <button type="button" class="show-nav" data-toggle="navbar-small" aria-label="Toggle navigation">
+      <button
+        type="button"
+        class="show-nav"
+        data-toggle="navbar-small"
+        aria-label="Toggle navigation"
+      >
         <img src="/img/menu.svg" alt="Pages" />
       </button>
     </div>
 
     <!-- Site title -->
-    <b class="cell auto">Antiquities Act</b>
+    <b>Antiquities Act</b>
 
-    <!-- Desktop links -->
+    <!-- Desktop links (hidden on mobile) -->
     <div class="show-for-medium">
       <nav>
         <a href="/">Home</a>
         <a href="/president">By President</a>
+        <!-- ✅ Added here too for desktop -->
         <a href="/states">By State</a>
         <a href="/years">By Year</a>
       </nav>
