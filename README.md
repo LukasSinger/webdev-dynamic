@@ -9,3 +9,7 @@ Dataset source: [https://github.com/fivethirtyeight/data/tree/master/antiquities
 President images are from the [Library of Congress](https://www.loc.gov/free-to-use/presidential-portraits/).
 
 Uses coolicons by Kryston Schwarze under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+Resources:
+Portions of this code were developed with assistance from ChatGPT (OpenAI, 2025)
+and GitHub Copilot (GitHub, 2025) for code generation and debugging support.
